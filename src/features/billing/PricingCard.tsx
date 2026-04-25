@@ -15,7 +15,7 @@ export const PricingCard = (props: {
   return (
     <div className="rounded-xl border border-border px-6 py-8 text-center">
       <div className="text-lg font-semibold">
-        {t(`${props.planId}_plan_name`)}
+        {t(`${props.planId}_plan_name` as any)}
       </div>
 
       <div className="mt-3 flex items-center justify-center">
@@ -29,7 +29,7 @@ export const PricingCard = (props: {
       </div>
 
       <div className="mt-2 text-sm text-muted-foreground">
-        {t(`${props.planId}_plan_description`)}
+        {t(`${props.planId}_plan_description` as any)}
       </div>
 
       {props.button}
