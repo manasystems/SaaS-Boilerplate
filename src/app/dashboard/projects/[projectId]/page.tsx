@@ -49,7 +49,7 @@ export default async function ProjectPage({ params }: Props) {
           </p>
         </div>
 
-        <EstimateTable estimateId={estimate.id} />
+        <EstimateTable estimateId={estimate.id} projectName={project.name} />
       </div>
     </main>
   );

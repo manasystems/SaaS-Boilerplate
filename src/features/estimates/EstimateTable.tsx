@@ -334,12 +334,13 @@ function SortableRow({
   );
 }
 
-export function EstimateTable({ estimateId }: { estimateId: string }) {
+export function EstimateTable({ estimateId, projectName }: { estimateId: string; projectName: string }) {
   const [rows, setRows] = useState<LineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingCell, setEditingCell] = useState<{ rowId: string; colId: EditableCol } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [exporting, setExporting] = useState(false);
 
   const [markupRows, setMarkupRows] = useState<MarkupRow[]>([]);
   const [markupEditId, setMarkupEditId] = useState<string | null>(null);
@@ -351,6 +352,7 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
   const startValueRef = useRef<string>('');
   const skipBlurRef = useRef(false);
   const failedPatchesRef = useRef<Map<string, Partial<LineItem>>>(new Map());
+  const printViewRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -447,6 +449,45 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
     failedPatchesRef.current.clear();
     await flushSaves(patches);
   }, [flushSaves]);
+
+  const exportPDF = useCallback(async () => {
+    if (!printViewRef.current || exporting) {
+      return;
+    }
+    setExporting(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF: JsPDF } = await import('jspdf');
+      const canvas = await html2canvas(printViewRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const doc = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const imgH = (canvas.height / canvas.width) * pageW;
+      let remaining = imgH;
+      let y = 0;
+      doc.addImage(imgData, 'PNG', 0, y, pageW, imgH);
+      remaining -= pageH;
+      while (remaining > 0) {
+        y -= pageH;
+        doc.addPage();
+        doc.addImage(imgData, 'PNG', 0, y, pageW, imgH);
+        remaining -= pageH;
+      }
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const safeName = projectName.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+      doc.save(`${safeName}-estimate-${dateStr}.pdf`);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, projectName]);
 
   const applyEdit = useCallback(
     (rowId: string, colId: EditableCol, val: string) => {
@@ -626,27 +667,54 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
   const grandTotal = subtotal + markupChain.reduce((s, r) => s + r.amount, 0);
 
   return (
-    <div className="w-full">
-      {/* Save status bar */}
-      <div className="mb-1 flex h-5 items-center justify-end gap-2">
-        {saveStatus === 'saving' && (
-          <span className="animate-pulse text-xs text-stone-400">Saving…</span>
-        )}
-        {saveStatus === 'saved' && (
-          <span className="text-xs text-green-600">Saved</span>
-        )}
-        {saveStatus === 'error' && (
-          <>
-            <span className="text-xs text-red-500">Save failed</span>
-            <button
-              type="button"
-              onClick={retryFailedSaves}
-              className="text-xs text-red-500 underline hover:text-red-700"
-            >
-              Retry
-            </button>
-          </>
-        )}
+    <div className="relative w-full">
+      {/* Header bar: export button + save status */}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={exportPDF}
+          disabled={exporting || loading}
+          className="flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-semibold text-white transition-opacity disabled:opacity-50"
+          style={{ backgroundColor: '#C2410C' }}
+        >
+          {exporting
+            ? (
+                <>
+                  <svg className="size-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                  </svg>
+                  Generating…
+                </>
+              )
+            : (
+                <>
+                  <svg className="size-3" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 0a.5.5 0 0 1 .5.5v8.793l2.646-2.647a.5.5 0 0 1 .708.708l-3.5 3.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L7.5 9.293V.5A.5.5 0 0 1 8 0zM1 13.5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13a.5.5 0 0 1-.5-.5z" />
+                  </svg>
+                  Export PDF
+                </>
+              )}
+        </button>
+        <div className="flex items-center gap-2">
+          {saveStatus === 'saving' && (
+            <span className="animate-pulse text-xs text-stone-400">Saving…</span>
+          )}
+          {saveStatus === 'saved' && (
+            <span className="text-xs text-green-600">Saved</span>
+          )}
+          {saveStatus === 'error' && (
+            <>
+              <span className="text-xs text-red-500">Save failed</span>
+              <button
+                type="button"
+                onClick={retryFailedSaves}
+                className="text-xs text-red-500 underline hover:text-red-700"
+              >
+                Retry
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-stone-200">
@@ -808,6 +876,109 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
         {' '}
         Add Row
       </button>
+
+      {/* Hidden print view — captured by html2canvas for PDF export */}
+      <div
+        ref={printViewRef}
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: '-9999px',
+          top: 0,
+          width: '800px',
+          backgroundColor: '#ffffff',
+          fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+          fontSize: '13px',
+          color: '#1c1917',
+          padding: '48px 56px',
+          boxSizing: 'border-box',
+          lineHeight: '1.5',
+        }}
+      >
+        {/* Header */}
+        <div style={{ borderBottom: '3px solid #C2410C', paddingBottom: '20px', marginBottom: '28px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#C2410C', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+                Robertson Civil
+              </div>
+              <div style={{ fontSize: '16px', fontWeight: 600, color: '#1c1917', marginTop: '6px' }}>
+                {projectName}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right', fontSize: '12px', color: '#78716c' }}>
+              <div style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '11px' }}>
+                Estimate
+              </div>
+              <div style={{ marginTop: '4px' }}>
+                {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Line items table */}
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#fafaf9', borderBottom: '2px solid #e7e5e4' }}>
+              <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#78716c', width: '36px' }}>#</th>
+              <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#78716c' }}>Description</th>
+              <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#78716c', width: '80px' }}>Qty</th>
+              <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#78716c', width: '56px' }}>Unit</th>
+              <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#78716c', width: '110px' }}>Unit Price</th>
+              <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#78716c', width: '110px' }}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, idx) => (
+              <tr key={row.id} style={{ borderBottom: '1px solid #f5f5f4' }}>
+                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#a8a29e', fontSize: '12px' }}>{idx + 1}</td>
+                <td style={{ padding: '8px 10px' }}>{row.description}</td>
+                <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace' }}>{fmtQty(row.quantity)}</td>
+                <td style={{ padding: '8px 10px', textTransform: 'uppercase', fontSize: '12px' }}>{row.unit ?? ''}</td>
+                <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(row.unitPrice)}</td>
+                <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{fmt(calcTotal(row))}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: '2px solid #d6d3d1', backgroundColor: '#fafaf9' }}>
+              <td colSpan={5} style={{ padding: '10px 10px', textAlign: 'right', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#78716c' }}>
+                Subtotal
+              </td>
+              <td style={{ padding: '10px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, color: '#1c1917' }}>
+                {fmt(subtotal)}
+              </td>
+            </tr>
+            {markupChain.map(row => (
+              <tr key={row.id} style={{ borderTop: '1px solid #e7e5e4' }}>
+                <td colSpan={4} style={{ padding: '8px 10px', textAlign: 'right', color: '#78716c' }}>{row.label}</td>
+                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#78716c', fontFamily: 'monospace' }}>
+                  {Number.parseFloat(row.percentage).toFixed(1)}
+                  %
+                </td>
+                <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'monospace', color: '#44403c' }}>
+                  {fmt(row.amount)}
+                </td>
+              </tr>
+            ))}
+            <tr style={{ borderTop: '2px solid #a8a29e' }}>
+              <td colSpan={5} style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#C2410C' }}>
+                Grand Total
+              </td>
+              <td style={{ padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, fontSize: '16px', color: '#C2410C' }}>
+                {fmt(grandTotal)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+
+        {/* Footer */}
+        <div style={{ marginTop: '40px', paddingTop: '12px', borderTop: '1px solid #e7e5e4', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#a8a29e' }}>
+          <span>Generated by Mana</span>
+          <span>{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+        </div>
+      </div>
     </div>
   );
 }
