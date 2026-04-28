@@ -15,6 +15,13 @@
       "when": 1777200000000,
       "tag": "0001_estimate_user_timestamps",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1745798400000,
+      "tag": "0002_user_company_name",
+      "breakpoints": true
     }
   ]
 }

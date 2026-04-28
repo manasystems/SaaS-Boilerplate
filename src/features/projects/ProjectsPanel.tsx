@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,42 @@ type Project = {
   createdAt: string;
 };
 
+function SkeletonCard() {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-stone-100 bg-stone-50 px-4 py-3">
+      <div className="h-4 w-48 animate-pulse rounded bg-stone-200" />
+      <div className="ml-auto h-3 w-16 animate-pulse rounded bg-stone-200" />
+    </div>
+  );
+}
+
+function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-stone-200 py-16 text-center">
+      <svg
+        className="mb-4 size-12 text-stone-300"
+        fill="none"
+        viewBox="0 0 48 48"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <rect x="6" y="10" width="36" height="30" rx="3" />
+        <path d="M6 18h36" />
+        <path d="M16 10V6M32 10V6" />
+      </svg>
+      <h3 className="mb-1 text-base font-semibold text-stone-700">No projects yet</h3>
+      <p className="mb-6 text-sm text-stone-400">Get started by creating your first estimate.</p>
+      <Button
+        onClick={onCreateClick}
+        style={{ backgroundColor: '#C2410C' }}
+        className="text-white hover:opacity-90"
+      >
+        Create your first project
+      </Button>
+    </div>
+  );
+}
+
 export function ProjectsPanel() {
   const router = useRouter();
   const [projectList, setProjectList] = useState<Project[]>([]);
@@ -21,6 +57,7 @@ export function ProjectsPanel() {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const newNameInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = async () => {
     const res = await fetch('/api/projects');
@@ -73,12 +110,17 @@ export function ProjectsPanel() {
     refresh();
   };
 
+  const focusNewNameInput = () => {
+    newNameInputRef.current?.focus();
+  };
+
   return (
     <div className="w-full max-w-2xl">
-      <h2 className="mb-4 text-xl font-semibold">Projects</h2>
+      <h2 className="mb-4 text-xl font-semibold text-stone-800">Projects</h2>
 
       <form onSubmit={handleCreate} className="mb-6 flex gap-2">
         <Input
+          ref={newNameInputRef}
           value={newName}
           onChange={e => setNewName(e.target.value)}
           placeholder="New project name"
@@ -90,15 +132,21 @@ export function ProjectsPanel() {
       </form>
 
       {loading
-        ? <p className="text-sm text-muted-foreground">Loading…</p>
+        ? (
+            <div className="space-y-2">
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          )
         : projectList.length === 0
-          ? <p className="text-sm text-muted-foreground">No projects yet. Create your first one above.</p>
+          ? <EmptyState onCreateClick={focusNewNameInput} />
           : (
               <ul className="space-y-2">
                 {projectList.map(project => (
                   <li
                     key={project.id}
-                    className="flex items-center gap-2 rounded-lg border px-4 py-3"
+                    className="flex items-center gap-2 rounded-lg border border-stone-200 px-4 py-3 transition-colors hover:border-stone-300 hover:bg-stone-50"
                   >
                     {editingId === project.id
                       ? (
@@ -126,17 +174,18 @@ export function ProjectsPanel() {
                           <>
                             <button
                               type="button"
-                              className="flex-1 text-left font-medium transition-colors hover:text-[#C2410C]"
+                              className="flex-1 text-left font-medium text-stone-800 transition-colors hover:text-[#C2410C]"
                               onClick={() => router.push(`/dashboard/projects/${project.id}`)}
                             >
                               {project.name}
                             </button>
                             {project.companyName && (
-                              <span className="text-sm text-muted-foreground">{project.companyName}</span>
+                              <span className="text-xs text-stone-400">{project.companyName}</span>
                             )}
                             <Button
                               size="sm"
                               variant="ghost"
+                              className="text-stone-400 hover:text-stone-700"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setEditingId(project.id);
@@ -148,7 +197,7 @@ export function ProjectsPanel() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="text-destructive hover:text-destructive"
+                              className="text-stone-400 hover:text-red-500"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDelete(project.id, project.name);

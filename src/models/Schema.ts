@@ -1,5 +1,11 @@
 import { integer, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey(),
+  companyName: text('company_name'),
+  updatedAt: timestamp('updated_at', { mode: 'date' }).defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull(),

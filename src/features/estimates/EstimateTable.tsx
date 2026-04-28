@@ -24,6 +24,8 @@ import {
 import { GripVertical } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useSaveStatus } from './SaveStatusContext';
+
 type LineItem = {
   id: string;
   description: string;
@@ -41,8 +43,6 @@ type MarkupRow = {
 };
 
 type MarkupRowWithAmount = MarkupRow & { amount: number };
-
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 const EDITABLE_COLS = ['description', 'quantity', 'unit', 'unitPrice'] as const;
 type EditableCol = (typeof EDITABLE_COLS)[number];
@@ -334,12 +334,12 @@ function SortableRow({
   );
 }
 
-export function EstimateTable({ estimateId, projectName }: { estimateId: string; projectName: string }) {
+export function EstimateTable({ estimateId, projectName, companyName }: { estimateId: string; projectName: string; companyName?: string | null }) {
   const [rows, setRows] = useState<LineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingCell, setEditingCell] = useState<{ rowId: string; colId: EditableCol } | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const { setSaveStatus } = useSaveStatus();
   const [exporting, setExporting] = useState(false);
 
   const [markupRows, setMarkupRows] = useState<MarkupRow[]>([]);
@@ -415,7 +415,7 @@ export function EstimateTable({ estimateId, projectName }: { estimateId: string;
       void results;
       failedPatchesRef.current.clear();
       setSaveStatus('saved');
-      setTimeout(() => setSaveStatus(s => (s === 'saved' ? 'idle' : s)), 2000);
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch {
       // store failed patches for retry
       patches.forEach(([id, p]) => {
@@ -424,7 +424,7 @@ export function EstimateTable({ estimateId, projectName }: { estimateId: string;
       });
       setSaveStatus('error');
     }
-  }, []);
+  }, [setSaveStatus]);
 
   const scheduleSave = useCallback((id: string, patch: Partial<LineItem>) => {
     const existing = pendingPatches.current.get(id) ?? {};
@@ -439,16 +439,7 @@ export function EstimateTable({ estimateId, projectName }: { estimateId: string;
       pendingPatches.current.clear();
       await flushSaves(saves);
     }, 500);
-  }, [flushSaves]);
-
-  const retryFailedSaves = useCallback(async () => {
-    const patches = Array.from(failedPatchesRef.current.entries());
-    if (patches.length === 0) {
-      return;
-    }
-    failedPatchesRef.current.clear();
-    await flushSaves(patches);
-  }, [flushSaves]);
+  }, [flushSaves, setSaveStatus]);
 
   const exportPDF = useCallback(async () => {
     if (!printViewRef.current || exporting) {
@@ -668,7 +659,7 @@ export function EstimateTable({ estimateId, projectName }: { estimateId: string;
 
   return (
     <div className="relative w-full">
-      {/* Header bar: export button + save status */}
+      {/* Header bar: export button */}
       <div className="mb-2 flex items-center justify-between gap-2">
         <button
           type="button"
@@ -695,26 +686,6 @@ export function EstimateTable({ estimateId, projectName }: { estimateId: string;
                 </>
               )}
         </button>
-        <div className="flex items-center gap-2">
-          {saveStatus === 'saving' && (
-            <span className="animate-pulse text-xs text-stone-400">Saving…</span>
-          )}
-          {saveStatus === 'saved' && (
-            <span className="text-xs text-green-600">Saved</span>
-          )}
-          {saveStatus === 'error' && (
-            <>
-              <span className="text-xs text-red-500">Save failed</span>
-              <button
-                type="button"
-                onClick={retryFailedSaves}
-                className="text-xs text-red-500 underline hover:text-red-700"
-              >
-                Retry
-              </button>
-            </>
-          )}
-        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-stone-200">
@@ -900,7 +871,7 @@ export function EstimateTable({ estimateId, projectName }: { estimateId: string;
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <div style={{ fontSize: '22px', fontWeight: 700, color: '#C2410C', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-                Robertson Civil
+                {companyName || 'My Company'}
               </div>
               <div style={{ fontSize: '16px', fontWeight: 600, color: '#1c1917', marginTop: '6px' }}>
                 {projectName}
