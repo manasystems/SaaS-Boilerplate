@@ -22,7 +22,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { GripVertical } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type LineItem = {
   id: string;
@@ -32,6 +32,15 @@ type LineItem = {
   unitPrice: string;
   sortOrder: number;
 };
+
+type MarkupRow = {
+  id: string;
+  label: string;
+  percentage: string;
+  sortOrder: number;
+};
+
+type MarkupRowWithAmount = MarkupRow & { amount: number };
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -332,6 +341,11 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
   const [editValue, setEditValue] = useState('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
 
+  const [markupRows, setMarkupRows] = useState<MarkupRow[]>([]);
+  const [markupEditId, setMarkupEditId] = useState<string | null>(null);
+  const [markupEditValue, setMarkupEditValue] = useState('');
+  const markupDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatches = useRef<Map<string, Partial<LineItem>>>(new Map());
   const startValueRef = useRef<string>('');
@@ -354,6 +368,29 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
       })
       .finally(() => setLoading(false));
   }, [estimateId]);
+
+  useEffect(() => {
+    fetch(`/api/estimates/${estimateId}/markup-rows`)
+      .then(r => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setMarkupRows(data);
+        }
+      });
+  }, [estimateId]);
+
+  const saveMarkupPct = useCallback((id: string, pct: string) => {
+    if (markupDebounceTimer.current) {
+      clearTimeout(markupDebounceTimer.current);
+    }
+    markupDebounceTimer.current = setTimeout(() => {
+      fetch(`/api/markup-rows/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ percentage: pct }),
+      });
+    }, 500);
+  }, []);
 
   const flushSaves = useCallback(async (patches: [string, Partial<LineItem>][]) => {
     setSaveStatus('saving');
@@ -573,7 +610,20 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
     getRowId: row => row.id,
   });
 
-  const grandTotal = rows.reduce((sum, r) => sum + calcTotal(r), 0);
+  const subtotal = rows.reduce((sum, r) => sum + calcTotal(r), 0);
+
+  const markupChain: MarkupRowWithAmount[] = useMemo(() => {
+    const sorted = [...markupRows].sort((a, b) => a.sortOrder - b.sortOrder);
+    let running = subtotal;
+    return sorted.map((r) => {
+      const pct = Number.parseFloat(r.percentage) || 0;
+      const amount = running * (pct / 100);
+      running += amount;
+      return { ...r, amount };
+    });
+  }, [markupRows, subtotal]);
+
+  const grandTotal = subtotal + markupChain.reduce((s, r) => s + r.amount, 0);
 
   return (
     <div className="w-full">
@@ -665,11 +715,82 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
           </tbody>
 
           <tfoot>
+            {/* Subtotal */}
             <tr className="border-t-2 border-stone-300 bg-stone-50">
               <td colSpan={6} className="h-9 px-3 text-right text-xs font-semibold uppercase tracking-wider text-stone-500">
+                Subtotal
+              </td>
+              <td className="h-9 px-3 text-right font-semibold text-stone-700" style={monoStyle}>
+                {fmt(subtotal)}
+              </td>
+              <td />
+            </tr>
+
+            {/* Markup rows */}
+            {markupChain.length > 0 && (
+              <tr className="border-t border-stone-200">
+                <td colSpan={8} className="p-0" />
+              </tr>
+            )}
+            {markupChain.map(row => (
+              <tr key={row.id} className="bg-stone-50/40 hover:bg-stone-50">
+                <td colSpan={5} className="h-8 px-3 text-right align-middle text-sm text-stone-500">
+                  {row.label}
+                </td>
+                <td className="h-8 px-3 align-middle">
+                  <div className="flex items-center justify-end gap-0.5">
+                    {markupEditId === row.id
+                      ? (
+                          <input
+                            // eslint-disable-next-line jsx-a11y/no-autofocus
+                            autoFocus
+                            className="w-14 border-none bg-transparent text-right text-sm leading-8 outline-none"
+                            style={monoStyle}
+                            value={markupEditValue}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setMarkupEditValue(v);
+                              setMarkupRows(prev => prev.map(r => r.id === row.id ? { ...r, percentage: v } : r));
+                              saveMarkupPct(row.id, v);
+                            }}
+                            onBlur={() => setMarkupEditId(null)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === 'Escape') {
+                                e.preventDefault();
+                                setMarkupEditId(null);
+                              }
+                            }}
+                          />
+                        )
+                      : (
+                          <button
+                            type="button"
+                            className="w-14 cursor-text bg-transparent text-right text-sm text-stone-700 hover:text-stone-900"
+                            style={monoStyle}
+                            onClick={() => {
+                              setMarkupEditId(row.id);
+                              setMarkupEditValue(row.percentage);
+                            }}
+                          >
+                            {Number.parseFloat(row.percentage).toFixed(1)}
+                          </button>
+                        )}
+                    <span className="select-none text-sm text-stone-400">%</span>
+                  </div>
+                </td>
+                <td className="h-8 px-3 text-right align-middle text-sm text-stone-600" style={monoStyle}>
+                  {fmt(row.amount)}
+                </td>
+                <td />
+              </tr>
+            ))}
+
+            {/* Grand Total */}
+            <tr className="border-t-2 border-stone-400">
+              <td colSpan={6} className="h-10 px-3 text-right align-middle text-sm font-bold uppercase tracking-wider" style={{ color: '#C2410C' }}>
                 Grand Total
               </td>
-              <td className="h-9 px-3 text-right font-bold" style={{ ...monoStyle, color: '#C2410C' }}>
+              <td className="h-10 px-3 text-right align-middle text-base font-bold" style={{ ...monoStyle, color: '#C2410C' }}>
                 {fmt(grandTotal)}
               </td>
               <td />
