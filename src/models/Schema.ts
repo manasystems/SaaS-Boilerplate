@@ -17,6 +17,7 @@ export const estimates = pgTable('estimates', {
   projectId: uuid('project_id')
     .notNull()
     .references(() => projects.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id'),
   createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'date' })
     .defaultNow()
@@ -29,11 +30,17 @@ export const lineItems = pgTable('line_items', {
   estimateId: uuid('estimate_id')
     .notNull()
     .references(() => estimates.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id'),
   description: text('description').notNull(),
   quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull().default('1'),
   unit: text('unit'),
   unitPrice: numeric('unit_price', { precision: 12, scale: 2 }).notNull().default('0'),
   sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'date' })
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
 });
 
 export const markupRows = pgTable('markup_rows', {
