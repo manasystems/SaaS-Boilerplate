@@ -1,9 +1,27 @@
 'use client';
 
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table';
+import { GripVertical } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 type LineItem = {
@@ -15,10 +33,12 @@ type LineItem = {
   sortOrder: number;
 };
 
-type SaveStatus = 'idle' | 'saving' | 'saved';
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 const EDITABLE_COLS = ['description', 'quantity', 'unit', 'unitPrice'] as const;
 type EditableCol = (typeof EDITABLE_COLS)[number];
+
+const UNIT_OPTIONS = ['CY', 'LF', 'SY', 'LS', 'EA', 'TON', 'HR'];
 
 function fmt(val: string | number): string {
   const n = typeof val === 'string' ? Number.parseFloat(val) : val;
@@ -28,44 +48,33 @@ function fmt(val: string | number): string {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
+function fmtQty(val: string): string {
+  const n = Number.parseFloat(val);
+  if (Number.isNaN(n) || n === 0) {
+    return '';
+  }
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function calcTotal(row: LineItem): number {
   const qty = Number.parseFloat(row.quantity);
   const up = Number.parseFloat(row.unitPrice);
   return Number.isNaN(qty) || Number.isNaN(up) ? 0 : qty * up;
 }
 
-function displayQty(val: string): string {
-  const n = Number.parseFloat(val);
-  if (Number.isNaN(n) || n === 0) {
-    return '';
-  }
-  return n % 1 === 0 ? String(Math.trunc(n)) : val;
-}
-
 const monoStyle = { fontFamily: '\'JetBrains Mono\', monospace' } as const;
 
-// Defined at module level to satisfy react/no-nested-components
 type CellInputProps = {
   editValue: string;
   rowId: string;
   colId: EditableCol;
   numeric?: boolean;
-  upper?: boolean;
   onValueChange: (v: string) => void;
   onKeyDown: (e: React.KeyboardEvent, rowId: string, colId: EditableCol) => void;
   onBlur: () => void;
 };
 
-function CellInput({
-  editValue,
-  rowId,
-  colId,
-  numeric,
-  upper,
-  onValueChange,
-  onKeyDown,
-  onBlur,
-}: CellInputProps) {
+function CellInput({ editValue, rowId, colId, numeric, onValueChange, onKeyDown, onBlur }: CellInputProps) {
   return (
     <input
       // eslint-disable-next-line jsx-a11y/no-autofocus
@@ -73,18 +82,252 @@ function CellInput({
       className={`size-full border-none bg-transparent p-0 text-sm leading-8 outline-none${numeric ? ' text-right' : ''}`}
       style={numeric ? monoStyle : undefined}
       value={editValue}
-      onChange={(e) => {
-        const v = upper ? e.target.value.toUpperCase() : e.target.value;
-        onValueChange(v);
-      }}
+      onChange={e => onValueChange(e.target.value)}
       onKeyDown={e => onKeyDown(e, rowId, colId)}
       onBlur={onBlur}
     />
   );
 }
 
+type UnitCellInputProps = {
+  editValue: string;
+  rowId: string;
+  onValueChange: (v: string) => void;
+  onKeyDown: (e: React.KeyboardEvent, rowId: string, colId: EditableCol) => void;
+  onBlur: () => void;
+};
+
+function UnitCellInput({ editValue, rowId, onValueChange, onKeyDown, onBlur }: UnitCellInputProps) {
+  return (
+    <>
+      <input
+        // eslint-disable-next-line jsx-a11y/no-autofocus
+        autoFocus
+        list="mana-unit-options"
+        className="size-full border-none bg-transparent p-0 text-sm uppercase leading-8 outline-none"
+        value={editValue}
+        onChange={e => onValueChange(e.target.value.toUpperCase())}
+        onKeyDown={e => onKeyDown(e, rowId, 'unit')}
+        onBlur={onBlur}
+      />
+      <datalist id="mana-unit-options">
+        {UNIT_OPTIONS.map(u => (
+          <option key={u} value={u} />
+        ))}
+      </datalist>
+    </>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <tr className="border-b border-stone-100">
+      <td className="h-8 px-3">
+        <div className="size-3 animate-pulse rounded bg-stone-100" />
+      </td>
+      <td className="h-8 px-3">
+        <div className="h-3 w-52 animate-pulse rounded bg-stone-100" />
+      </td>
+      <td className="h-8 px-3">
+        <div className="ml-auto h-3 w-10 animate-pulse rounded bg-stone-100" />
+      </td>
+      <td className="h-8 px-3">
+        <div className="h-3 w-8 animate-pulse rounded bg-stone-100" />
+      </td>
+      <td className="h-8 px-3">
+        <div className="ml-auto h-3 w-16 animate-pulse rounded bg-stone-100" />
+      </td>
+      <td className="h-8 px-3">
+        <div className="ml-auto h-3 w-20 animate-pulse rounded bg-stone-100" />
+      </td>
+      <td className="h-8 px-2" />
+    </tr>
+  );
+}
+
+type SortableRowProps = {
+  row: LineItem;
+  rowIdx: number;
+  editingCell: { rowId: string; colId: EditableCol } | null;
+  editValue: string;
+  setEditValue: (v: string) => void;
+  openCell: (rowId: string, colId: EditableCol, val: string) => void;
+  handleKeyDown: (e: React.KeyboardEvent, rowId: string, colId: EditableCol) => Promise<void>;
+  handleBlur: () => void;
+  deleteRow: (id: string) => void;
+};
+
+function SortableRow({
+  row,
+  rowIdx,
+  editingCell,
+  editValue,
+  setEditValue,
+  openCell,
+  handleKeyDown,
+  handleBlur,
+  deleteRow,
+}: SortableRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: row.id });
+
+  const isEditingRow = editingCell?.rowId === row.id;
+  const cellBtnBase = 'block w-full text-left bg-transparent border-none p-0 text-sm cursor-text';
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+        position: isDragging ? 'relative' : undefined,
+        zIndex: isDragging ? 10 : undefined,
+      }}
+      className="group border-b border-stone-100 last:border-0 hover:bg-stone-50/60"
+    >
+      {/* Drag handle */}
+      <td className="h-8 w-6 px-1 align-middle">
+        <button
+          type="button"
+          aria-label="Drag to reorder"
+          className="flex size-5 cursor-grab items-center justify-center text-stone-300 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical size={13} />
+        </button>
+      </td>
+
+      {/* # */}
+      <td className="size-8 select-none px-1 text-right align-middle text-xs text-stone-400">
+        {rowIdx + 1}
+      </td>
+
+      {/* Description */}
+      <td className="h-8 min-w-[200px] px-3 align-middle">
+        {isEditingRow && editingCell.colId === 'description'
+          ? (
+              <CellInput
+                editValue={editValue}
+                rowId={row.id}
+                colId="description"
+                onValueChange={setEditValue}
+                onKeyDown={handleKeyDown}
+                onBlur={handleBlur}
+              />
+            )
+          : (
+              <button
+                type="button"
+                className={`${cellBtnBase} truncate`}
+                onClick={() => openCell(row.id, 'description', row.description)}
+              >
+                {row.description || <span className="text-stone-300">Description…</span>}
+              </button>
+            )}
+      </td>
+
+      {/* Qty */}
+      <td className="h-8 px-3 align-middle">
+        {isEditingRow && editingCell.colId === 'quantity'
+          ? (
+              <CellInput
+                editValue={editValue}
+                rowId={row.id}
+                colId="quantity"
+                numeric
+                onValueChange={setEditValue}
+                onKeyDown={handleKeyDown}
+                onBlur={handleBlur}
+              />
+            )
+          : (
+              <button
+                type="button"
+                className={`${cellBtnBase} text-right`}
+                style={monoStyle}
+                onClick={() => openCell(row.id, 'quantity', row.quantity)}
+              >
+                {fmtQty(row.quantity) || <span className="text-stone-300">0.00</span>}
+              </button>
+            )}
+      </td>
+
+      {/* Unit */}
+      <td className="h-8 px-3 align-middle">
+        {isEditingRow && editingCell.colId === 'unit'
+          ? (
+              <UnitCellInput
+                editValue={editValue}
+                rowId={row.id}
+                onValueChange={setEditValue}
+                onKeyDown={handleKeyDown}
+                onBlur={handleBlur}
+              />
+            )
+          : (
+              <button
+                type="button"
+                className={`${cellBtnBase} uppercase`}
+                onClick={() => openCell(row.id, 'unit', row.unit ?? '')}
+              >
+                {row.unit || <span className="text-stone-300">—</span>}
+              </button>
+            )}
+      </td>
+
+      {/* Unit Price */}
+      <td className="h-8 px-3 align-middle">
+        {isEditingRow && editingCell.colId === 'unitPrice'
+          ? (
+              <CellInput
+                editValue={editValue}
+                rowId={row.id}
+                colId="unitPrice"
+                numeric
+                onValueChange={setEditValue}
+                onKeyDown={handleKeyDown}
+                onBlur={handleBlur}
+              />
+            )
+          : (
+              <button
+                type="button"
+                className={`${cellBtnBase} text-right`}
+                style={monoStyle}
+                onClick={() => openCell(row.id, 'unitPrice', row.unitPrice)}
+              >
+                {fmt(row.unitPrice)}
+              </button>
+            )}
+      </td>
+
+      {/* Total */}
+      <td className="h-8 px-3 text-right align-middle">
+        <span className="font-semibold" style={monoStyle}>
+          {fmt(calcTotal(row))}
+        </span>
+      </td>
+
+      {/* Delete */}
+      <td className="h-8 px-2 align-middle">
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Delete row"
+          className="flex size-5 items-center justify-center text-lg leading-none text-stone-400 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
+          onClick={() => deleteRow(row.id)}
+        >
+          ×
+        </button>
+      </td>
+    </tr>
+  );
+}
+
 export function EstimateTable({ estimateId }: { estimateId: string }) {
   const [rows, setRows] = useState<LineItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editingCell, setEditingCell] = useState<{ rowId: string; colId: EditableCol } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -93,16 +336,56 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
   const pendingPatches = useRef<Map<string, Partial<LineItem>>>(new Map());
   const startValueRef = useRef<string>('');
   const skipBlurRef = useRef(false);
+  const failedPatchesRef = useRef<Map<string, Partial<LineItem>>>(new Map());
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   useEffect(() => {
+    setLoading(true);
     fetch(`/api/estimates/${estimateId}/line-items`)
       .then(r => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
           setRows(data);
         }
-      });
+      })
+      .finally(() => setLoading(false));
   }, [estimateId]);
+
+  const flushSaves = useCallback(async (patches: [string, Partial<LineItem>][]) => {
+    setSaveStatus('saving');
+    try {
+      const results = await Promise.all(
+        patches.map(([rowId, p]) =>
+          fetch(`/api/line-items/${rowId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(p),
+          }).then((r) => {
+            if (!r.ok) {
+              throw new Error(`${r.status}`);
+            }
+            return r;
+          }),
+        ),
+      );
+      // all succeeded
+      void results;
+      failedPatchesRef.current.clear();
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(s => (s === 'saved' ? 'idle' : s)), 2000);
+    } catch {
+      // store failed patches for retry
+      patches.forEach(([id, p]) => {
+        const existing = failedPatchesRef.current.get(id) ?? {};
+        failedPatchesRef.current.set(id, { ...existing, ...p });
+      });
+      setSaveStatus('error');
+    }
+  }, []);
 
   const scheduleSave = useCallback((id: string, patch: Partial<LineItem>) => {
     const existing = pendingPatches.current.get(id) ?? {};
@@ -115,19 +398,18 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
     debounceTimer.current = setTimeout(async () => {
       const saves = Array.from(pendingPatches.current.entries());
       pendingPatches.current.clear();
-      await Promise.all(
-        saves.map(([rowId, p]) =>
-          fetch(`/api/line-items/${rowId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(p),
-          }),
-        ),
-      );
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
+      await flushSaves(saves);
     }, 500);
-  }, []);
+  }, [flushSaves]);
+
+  const retryFailedSaves = useCallback(async () => {
+    const patches = Array.from(failedPatchesRef.current.entries());
+    if (patches.length === 0) {
+      return;
+    }
+    failedPatchesRef.current.clear();
+    await flushSaves(patches);
+  }, [flushSaves]);
 
   const applyEdit = useCallback(
     (rowId: string, colId: EditableCol, val: string) => {
@@ -183,6 +465,21 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
     await fetch(`/api/line-items/${id}`, { method: 'DELETE' });
   }, []);
 
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+    setRows((prev) => {
+      const oldIdx = prev.findIndex(r => r.id === active.id);
+      const newIdx = prev.findIndex(r => r.id === over.id);
+      const reordered = arrayMove(prev, oldIdx, newIdx).map((r, i) => ({ ...r, sortOrder: i }));
+      // Persist new order (batched via existing debounce)
+      reordered.forEach(r => scheduleSave(r.id, { sortOrder: r.sortOrder }));
+      return reordered;
+    });
+  }, [scheduleSave]);
+
   const handleKeyDown = useCallback(
     async (e: React.KeyboardEvent, rowId: string, colId: EditableCol) => {
       const rowIdx = rows.findIndex(r => r.id === rowId);
@@ -205,6 +502,7 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
             } else if (rowIdx < rows.length - 1) {
               commitAndMove({ rowId: rows[rowIdx + 1]!.id, colId: EDITABLE_COLS[0]! });
             } else {
+              // Tab on last cell of last row → create new row
               applyEdit(rowId, colId, editValue);
               setEditingCell(null);
               const newRow = await addRow();
@@ -217,10 +515,7 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
             if (colIdx > 0) {
               commitAndMove({ rowId, colId: EDITABLE_COLS[colIdx - 1]! });
             } else if (rowIdx > 0) {
-              commitAndMove({
-                rowId: rows[rowIdx - 1]!.id,
-                colId: EDITABLE_COLS[EDITABLE_COLS.length - 1]!,
-              });
+              commitAndMove({ rowId: rows[rowIdx - 1]!.id, colId: EDITABLE_COLS[EDITABLE_COLS.length - 1]! });
             } else {
               commitAndMove(null);
             }
@@ -234,6 +529,7 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
           if (rowIdx < rows.length - 1) {
             commitAndMove({ rowId: rows[rowIdx + 1]!.id, colId });
           } else if (e.key === 'Enter') {
+            // Enter on last row → create new row
             applyEdit(rowId, colId, editValue);
             setEditingCell(null);
             const newRow = await addRow();
@@ -279,16 +575,27 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
 
   const grandTotal = rows.reduce((sum, r) => sum + calcTotal(r), 0);
 
-  const cellBtnBase = 'block w-full text-left bg-transparent border-none p-0 text-sm cursor-text';
-
   return (
     <div className="w-full">
-      <div className="mb-1 flex h-5 justify-end">
+      {/* Save status bar */}
+      <div className="mb-1 flex h-5 items-center justify-end gap-2">
         {saveStatus === 'saving' && (
           <span className="animate-pulse text-xs text-stone-400">Saving…</span>
         )}
         {saveStatus === 'saved' && (
           <span className="text-xs text-green-600">Saved</span>
+        )}
+        {saveStatus === 'error' && (
+          <>
+            <span className="text-xs text-red-500">Save failed</span>
+            <button
+              type="button"
+              onClick={retryFailedSaves}
+              className="text-xs text-red-500 underline hover:text-red-700"
+            >
+              Retry
+            </button>
+          </>
         )}
       </div>
 
@@ -296,181 +603,62 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-stone-200 bg-stone-50">
-              {(['#', 'Description', 'Qty', 'Unit', 'Unit Price', 'Total', ''] as const).map(
-                (h, i) => (
-                  <th
-                    // eslint-disable-next-line react/no-array-index-key
-                    key={i}
-                    className="h-8 whitespace-nowrap px-3 text-left text-xs font-semibold uppercase tracking-wider text-stone-500"
-                    style={{
-                      width: i === 0 ? 40 : i === 2 ? 90 : i === 3 ? 72 : i === 4 ? 120 : i === 5 ? 130 : i === 6 ? 32 : undefined,
-                      textAlign: i === 2 || i === 4 || i === 5 ? 'right' : undefined,
-                    }}
-                  >
-                    {h}
-                  </th>
-                ),
-              )}
+              {/* drag handle col */}
+              <th className="w-6" />
+              {(['#', 'Description', 'Qty', 'Unit', 'Unit Price', 'Total', ''] as const).map((h, i) => (
+                <th
+                  // eslint-disable-next-line react/no-array-index-key
+                  key={i}
+                  className="h-8 whitespace-nowrap px-3 text-left text-xs font-semibold uppercase tracking-wider text-stone-500"
+                  style={{
+                    width: i === 0 ? 32 : i === 2 ? 100 : i === 3 ? 72 : i === 4 ? 120 : i === 5 ? 130 : i === 6 ? 32 : undefined,
+                    textAlign: i === 2 || i === 4 || i === 5 ? 'right' : undefined,
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
 
           <tbody>
-            {table.getRowModel().rows.map((tableRow, rowIdx) => {
-              const row = tableRow.original;
-              const isEditingRow = editingCell?.rowId === row.id;
+            {loading
+              ? Array.from({ length: 4 }).map((_, i) => (
+                // eslint-disable-next-line react/no-array-index-key
+                <SkeletonRow key={i} />
+              ))
+              : (
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={rows.map(r => r.id)} strategy={verticalListSortingStrategy}>
+                      {table.getRowModel().rows.map((tableRow, rowIdx) => (
+                        <SortableRow
+                          key={tableRow.original.id}
+                          row={tableRow.original}
+                          rowIdx={rowIdx}
+                          editingCell={editingCell}
+                          editValue={editValue}
+                          setEditValue={setEditValue}
+                          openCell={openCell}
+                          handleKeyDown={handleKeyDown}
+                          handleBlur={handleBlur}
+                          deleteRow={deleteRow}
+                        />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+                )}
 
-              return (
-                <tr
-                  key={row.id}
-                  className="group border-b border-stone-100 last:border-0 hover:bg-stone-50/60"
-                >
-                  {/* # */}
-                  <td className="h-8 select-none px-3 text-right align-middle text-xs text-stone-400">
-                    {rowIdx + 1}
-                  </td>
-
-                  {/* Description */}
-                  <td className="h-8 min-w-[200px] px-3 align-middle">
-                    {isEditingRow && editingCell.colId === 'description'
-                      ? (
-                          <CellInput
-                            editValue={editValue}
-                            rowId={row.id}
-                            colId="description"
-                            onValueChange={setEditValue}
-                            onKeyDown={handleKeyDown}
-                            onBlur={handleBlur}
-                          />
-                        )
-                      : (
-                          <button
-                            type="button"
-                            className={`${cellBtnBase} truncate`}
-                            onClick={() => openCell(row.id, 'description', row.description)}
-                          >
-                            {row.description || (
-                              <span className="text-stone-300">Description…</span>
-                            )}
-                          </button>
-                        )}
-                  </td>
-
-                  {/* Qty */}
-                  <td className="h-8 px-3 align-middle">
-                    {isEditingRow && editingCell.colId === 'quantity'
-                      ? (
-                          <CellInput
-                            editValue={editValue}
-                            rowId={row.id}
-                            colId="quantity"
-                            numeric
-                            onValueChange={setEditValue}
-                            onKeyDown={handleKeyDown}
-                            onBlur={handleBlur}
-                          />
-                        )
-                      : (
-                          <button
-                            type="button"
-                            className={`${cellBtnBase} text-right`}
-                            style={monoStyle}
-                            onClick={() => openCell(row.id, 'quantity', row.quantity)}
-                          >
-                            {displayQty(row.quantity) || (
-                              <span className="text-stone-300">0</span>
-                            )}
-                          </button>
-                        )}
-                  </td>
-
-                  {/* Unit */}
-                  <td className="h-8 px-3 align-middle">
-                    {isEditingRow && editingCell.colId === 'unit'
-                      ? (
-                          <CellInput
-                            editValue={editValue}
-                            rowId={row.id}
-                            colId="unit"
-                            upper
-                            onValueChange={setEditValue}
-                            onKeyDown={handleKeyDown}
-                            onBlur={handleBlur}
-                          />
-                        )
-                      : (
-                          <button
-                            type="button"
-                            className={`${cellBtnBase} uppercase`}
-                            onClick={() => openCell(row.id, 'unit', row.unit ?? '')}
-                          >
-                            {row.unit || <span className="text-stone-300">—</span>}
-                          </button>
-                        )}
-                  </td>
-
-                  {/* Unit Price */}
-                  <td className="h-8 px-3 align-middle">
-                    {isEditingRow && editingCell.colId === 'unitPrice'
-                      ? (
-                          <CellInput
-                            editValue={editValue}
-                            rowId={row.id}
-                            colId="unitPrice"
-                            numeric
-                            onValueChange={setEditValue}
-                            onKeyDown={handleKeyDown}
-                            onBlur={handleBlur}
-                          />
-                        )
-                      : (
-                          <button
-                            type="button"
-                            className={`${cellBtnBase} text-right`}
-                            style={monoStyle}
-                            onClick={() => openCell(row.id, 'unitPrice', row.unitPrice)}
-                          >
-                            {fmt(row.unitPrice)}
-                          </button>
-                        )}
-                  </td>
-
-                  {/* Total (computed, read-only) */}
-                  <td className="h-8 px-3 text-right align-middle">
-                    <span className="font-semibold" style={monoStyle}>
-                      {fmt(calcTotal(row))}
-                    </span>
-                  </td>
-
-                  {/* Delete */}
-                  <td className="h-8 px-2 align-middle">
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      aria-label="Delete row"
-                      className="flex size-5 items-center justify-center text-lg leading-none text-stone-400 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
-                      onClick={() => deleteRow(row.id)}
-                    >
-                      ×
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-
-            {rows.length === 0 && (
+            {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="h-12 text-center text-sm text-stone-400">
-                  No line items yet —
-                  {' '}
+                <td colSpan={8} className="h-16 text-center align-middle text-sm text-stone-400">
+                  <span>No line items yet. </span>
                   <button
                     type="button"
-                    className="underline hover:text-[#C2410C]"
+                    className="font-medium text-[#C2410C] underline-offset-2 hover:underline"
                     onClick={addRow}
                   >
-                    Add Row
+                    Add your first line item →
                   </button>
-                  {' '}
-                  or press Tab to start
                 </td>
               </tr>
             )}
@@ -478,13 +666,10 @@ export function EstimateTable({ estimateId }: { estimateId: string }) {
 
           <tfoot>
             <tr className="border-t-2 border-stone-300 bg-stone-50">
-              <td
-                colSpan={5}
-                className="h-8 px-3 text-right text-xs font-semibold uppercase tracking-wider text-stone-500"
-              >
-                Subtotal
+              <td colSpan={6} className="h-9 px-3 text-right text-xs font-semibold uppercase tracking-wider text-stone-500">
+                Grand Total
               </td>
-              <td className="h-8 px-3 text-right font-bold" style={monoStyle}>
+              <td className="h-9 px-3 text-right font-bold" style={{ ...monoStyle, color: '#C2410C' }}>
                 {fmt(grandTotal)}
               </td>
               <td />
