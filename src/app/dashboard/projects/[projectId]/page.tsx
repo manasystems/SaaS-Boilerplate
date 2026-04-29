@@ -44,7 +44,7 @@ export default async function ProjectPage({ params }: Props) {
   }
 
   const [userRow, estimate] = await Promise.all([
-    db.select().from(users).where(eq(users.id, user.id)).then(rows => rows[0] ?? null),
+    db.select().from(users).where(eq(users.id, user.id)).then(rows => rows[0] ?? null).catch(() => null),
     getOrCreateEstimate(project.id, user.id),
   ]);
 

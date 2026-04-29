@@ -19,8 +19,12 @@ export default async function DashboardPage() {
 
   let companyName: string | null = null;
   if (user) {
-    const [row] = await db.select().from(users).where(eq(users.id, user.id));
-    companyName = row?.companyName ?? null;
+    try {
+      const [row] = await db.select().from(users).where(eq(users.id, user.id));
+      companyName = row?.companyName ?? null;
+    } catch {
+      // users table may not exist yet if migration 0002 hasn't been applied
+    }
   }
 
   return (
