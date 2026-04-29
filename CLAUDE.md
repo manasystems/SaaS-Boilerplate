@@ -6,7 +6,7 @@ Mana is a web-based construction estimating SaaS. Tagline: "a better Excel for c
 
 Beachhead market: small-to-mid civil contractors (sitework subs, paving contractors, utility contractors) under $20M revenue who are stuck in Excel.
 
-- Live URL: https://mana-ten.vercel.app (build.manasystems.us SSL pending)
+- Live URLs: https://mana-ten.vercel.app · https://build.manasystems.us (SSL resolved Day 11 — HTTP/2 200 via Cloudflare → Vercel)
 - GitHub: manasystems/SaaS-Boilerplate (`main` branch)
 - Repo origin: ixartz/SaaS-Boilerplate (Stripe + demo code removed)
 - Test workspace: "Robertson Civil" (4-member Pro workspace)
