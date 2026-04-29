@@ -58,3 +58,10 @@ export const markupRows = pgTable('markup_rows', {
   percentage: numeric('percentage', { precision: 6, scale: 3 }).notNull().default('0'),
   sortOrder: integer('sort_order').notNull().default(0),
 });
+
+export const feedbackTable = pgTable('feedback', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull(),
+  message: text('message').notNull(),
+  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
+});

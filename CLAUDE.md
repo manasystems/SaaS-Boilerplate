@@ -29,7 +29,7 @@ Beachhead market: small-to-mid civil contractors (sitework subs, paving contract
 
 ---
 
-## What's Built (Days 1–10 complete)
+## What's Built (Days 1–11 complete)
 
 - **Auth**: email/password signup/login, protected routes via Supabase
 - **Database**: Neon Postgres wired, Drizzle schema + migrations applied
@@ -50,6 +50,11 @@ Beachhead market: small-to-mid civil contractors (sitework subs, paving contract
   - Dashboard tab title "Projects | Mana", project page "[Name] | Mana"
   - Mana wordmark in header (burnt orange), Construction Estimating tagline
   - Breadcrumb ← Projects on estimate page
+- **Legal + Feedback (Day 11)**:
+  - `/terms` and `/privacy` static pages — SaaS-appropriate boilerplate
+  - Dashboard footer linking to both pages on all dashboard routes
+  - Floating "Feedback" button (bottom-left) — modal with textarea, posts to `/api/feedback`
+  - `feedback` table in Neon (migration 0003 applied) — stores userId, message, created_at
 
 ---
 
@@ -66,6 +71,8 @@ src/
       EstimateTable.tsx            # Main estimate grid (TanStack Table v8 + dnd-kit)
       SaveStatusContext.tsx        # Save status context + GlobalSaveIndicator
       queries.ts                   # Estimate + line item CRUD queries
+    feedback/
+      FeedbackButton.tsx           # Floating feedback button + modal (client)
   app/
     api/
       projects/
@@ -81,12 +88,19 @@ src/
         [id]/route.ts              # PATCH + DELETE
       user-settings/
         route.ts                   # GET + PATCH company name
+      feedback/
+        route.ts                   # POST — save feedback to DB
     dashboard/
+      layout.tsx                   # Dashboard layout: footer + feedback button
       page.tsx                     # Projects list + company name field
       CompanyNameField.tsx         # Inline editable company name (client)
       sign-out-button.tsx          # Sign out
       projects/[projectId]/
         page.tsx                   # Estimate view (server, fetches project + user)
+    terms/
+      page.tsx                     # Terms of Service (public, static)
+    privacy/
+      page.tsx                     # Privacy Policy (public, static)
   libs/
     DB.ts                          # Database connection (node-postgres / pg)
     Env.ts                         # Env var validation (t3-env)
@@ -96,7 +110,7 @@ src/
 
 ## Database Schema (Drizzle)
 
-Tables: `users`, `projects`, `estimates`, `line_items`, `markup_rows`
+Tables: `users`, `projects`, `estimates`, `line_items`, `markup_rows`, `feedback`
 
 - `users.id` = Supabase auth user UUID; stores `company_name`
 - Vertical-specific fields go in a **JSONB `metadata` column** — no vertical logic in core schema columns.
