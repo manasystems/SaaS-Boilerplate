@@ -1,22 +1,30 @@
 'use client';
 
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 type SaveStatusContextValue = {
   saveStatus: SaveStatus;
   setSaveStatus: (s: SaveStatus) => void;
+  lastSavedAt: Date | null;
+  setLastSavedAt: (d: Date | null) => void;
 };
 
 const SaveStatusContext = createContext<SaveStatusContextValue>({
   saveStatus: 'idle',
   setSaveStatus: () => {},
+  lastSavedAt: null,
+  setLastSavedAt: () => {},
 });
 
 export function SaveStatusProvider({ children }: { children: React.ReactNode }) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
-  const value = useMemo(() => ({ saveStatus, setSaveStatus }), [saveStatus]);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const value = useMemo(
+    () => ({ saveStatus, setSaveStatus, lastSavedAt, setLastSavedAt }),
+    [saveStatus, lastSavedAt],
+  );
   return (
     <SaveStatusContext.Provider value={value}>
       {children}
@@ -28,8 +36,43 @@ export function useSaveStatus() {
   return useContext(SaveStatusContext);
 }
 
+function useRelativeTime(date: Date | null): string {
+  const [, setTick] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!date) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+    intervalRef.current = setInterval(() => setTick(t => t + 1), 10_000);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [date]);
+
+  if (!date) {
+    return '';
+  }
+  const elapsed = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (elapsed < 10) {
+    return 'just now';
+  }
+  if (elapsed < 60) {
+    return `${Math.floor(elapsed / 10) * 10}s ago`;
+  }
+  const mins = Math.floor(elapsed / 60);
+  return `${mins}m ago`;
+}
+
 export function GlobalSaveIndicator() {
-  const { saveStatus } = useSaveStatus();
+  const { saveStatus, lastSavedAt } = useSaveStatus();
+  const relativeTime = useRelativeTime(saveStatus === 'saved' ? lastSavedAt : null);
 
   if (saveStatus === 'idle') {
     return null;
@@ -49,7 +92,10 @@ export function GlobalSaveIndicator() {
       {saveStatus === 'saved' && (
         <>
           <span className="size-2 rounded-full bg-green-500" />
-          <span className="text-stone-600">Saved ✓</span>
+          <span className="text-stone-600">
+            Saved
+            {relativeTime ? ` · ${relativeTime}` : ''}
+          </span>
         </>
       )}
       {saveStatus === 'error' && (

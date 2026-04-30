@@ -339,7 +339,7 @@ export function EstimateTable({ estimateId, projectName, companyName }: { estima
   const [loading, setLoading] = useState(true);
   const [editingCell, setEditingCell] = useState<{ rowId: string; colId: EditableCol } | null>(null);
   const [editValue, setEditValue] = useState('');
-  const { setSaveStatus } = useSaveStatus();
+  const { setSaveStatus, setLastSavedAt } = useSaveStatus();
   const [exporting, setExporting] = useState(false);
 
   const [markupRows, setMarkupRows] = useState<MarkupRow[]>([]);
@@ -415,7 +415,7 @@ export function EstimateTable({ estimateId, projectName, companyName }: { estima
       void results;
       failedPatchesRef.current.clear();
       setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
+      setLastSavedAt(new Date());
     } catch {
       // store failed patches for retry
       patches.forEach(([id, p]) => {
@@ -424,7 +424,7 @@ export function EstimateTable({ estimateId, projectName, companyName }: { estima
       });
       setSaveStatus('error');
     }
-  }, [setSaveStatus]);
+  }, [setSaveStatus, setLastSavedAt]);
 
   const scheduleSave = useCallback((id: string, patch: Partial<LineItem>) => {
     const existing = pendingPatches.current.get(id) ?? {};
