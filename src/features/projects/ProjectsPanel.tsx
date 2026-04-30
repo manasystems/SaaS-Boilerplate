@@ -9,7 +9,6 @@ import { Input } from '@/components/ui/input';
 type Project = {
   id: string;
   name: string;
-  companyName: string | null;
   createdAt: string;
 };
 
@@ -179,9 +178,6 @@ export function ProjectsPanel() {
                             >
                               {project.name}
                             </button>
-                            {project.companyName && (
-                              <span className="text-xs text-stone-400">{project.companyName}</span>
-                            )}
                             <Button
                               size="sm"
                               variant="ghost"

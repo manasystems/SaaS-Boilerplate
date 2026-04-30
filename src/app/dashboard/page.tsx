@@ -38,6 +38,12 @@ export default async function DashboardPage() {
           </div>
           <div className="flex items-center gap-4">
             <CompanyNameField initialValue={companyName} />
+            <a
+              href="/dashboard/settings"
+              className="text-sm text-stone-500 transition-colors hover:text-stone-800"
+            >
+              Settings
+            </a>
             <SignOutButton />
           </div>
         </div>
