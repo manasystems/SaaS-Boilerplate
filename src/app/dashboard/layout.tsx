@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { FeedbackButton } from '@/features/feedback/FeedbackButton';
+import { FeedbackButton } from '@/components/FeedbackButton';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
