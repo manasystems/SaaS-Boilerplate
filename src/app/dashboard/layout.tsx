@@ -14,8 +14,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {' '}
             Mana Systems
           </span>
-          <Link href="/terms" className="transition-colors hover:text-stone-600">Terms of Service</Link>
-          <Link href="/privacy" className="transition-colors hover:text-stone-600">Privacy Policy</Link>
+          <Link href="/legal/terms" className="transition-colors hover:text-stone-600">Terms of Service</Link>
+          <Link href="/legal/privacy" className="transition-colors hover:text-stone-600">Privacy Policy</Link>
         </div>
       </footer>
       <FeedbackButton />
