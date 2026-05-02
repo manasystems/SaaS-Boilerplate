@@ -161,6 +161,21 @@ Budget ceiling: **$400 for Beta 1**. Current spend: $10.44 (domain only).
 
 ---
 
+## Build History — Beta 1.1
+
+### Beta 1.1 Day 2 (2026-05-02) — Logo Upload ✅
+- Supabase Storage bucket `workspace-assets` (private, per-user logo path)
+- Migration 0005: `logo_url`, `accent_color`, `license_number` columns on `user_profiles` — applied to Neon production
+- `src/app/api/upload-logo/route.ts` — upload API with MIME/size validation
+- `src/features/settings/LogoUpload.tsx` — file picker, preview, remove
+- Settings → Appearance tab added
+- Dashboard header renders uploaded logo
+- `SUPABASE_SERVICE_ROLE_KEY` added to Vercel
+
+### Beta 1.1 Day 3 — Next
+
+---
+
 ## Deferred to Beta 2+
 
 - AI omnibar (⌘K) — Claude Sonnet
