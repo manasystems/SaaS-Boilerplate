@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .from(projects)
     .where(and(eq(projects.id, params.projectId), eq(projects.userId, user.id)));
 
-  return { title: project ? `${project.name} | Mana` : 'Mana' };
+  return { title: project ? `${project.name} | Mana Build` : 'Mana Build' };
 }
 
 export default async function ProjectPage({ params }: Props) {

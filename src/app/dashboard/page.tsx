@@ -5,7 +5,7 @@ import { ProjectsPanel } from '@/features/projects/ProjectsPanel';
 import { SignOutButton } from './sign-out-button';
 
 export const metadata: Metadata = {
-  title: 'Projects | Mana',
+  title: 'Projects | Mana Build',
 };
 
 export default function DashboardPage() {
@@ -15,8 +15,13 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight" style={{ color: '#C2410C' }}>Mana</h1>
-            <p className="mt-0.5 text-xs text-stone-400">Construction Estimating</p>
+            <h1
+              className="text-2xl tracking-tight"
+              style={{ color: 'var(--brand-orange)', fontFamily: 'var(--font-archivo-black)' }}
+            >
+              Mana Build
+            </h1>
+            <p className="mt-0.5 text-[11px] text-stone-500">Construction Estimating Software</p>
           </div>
           <div className="flex items-center gap-4">
             <a

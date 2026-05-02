@@ -4,6 +4,10 @@
 
 @layer base {
   :root {
+    --brand-orange: #ea580c;
+    --brand-orange-deep: #c2410c;
+    --brand-orange-tint: #fff7ed;
+
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
 
