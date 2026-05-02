@@ -334,7 +334,16 @@ function SortableRow({
   );
 }
 
-export function EstimateTable({ estimateId, projectName, companyName }: { estimateId: string; projectName: string; companyName?: string | null }) {
+type EstimateTableProps = {
+  estimateId: string;
+  projectName: string;
+  companyName?: string | null;
+  companyAddress?: string | null;
+  companyPhone?: string | null;
+  companyEmail?: string | null;
+};
+
+export function EstimateTable({ estimateId, projectName, companyName, companyAddress, companyPhone, companyEmail }: EstimateTableProps) {
   const [rows, setRows] = useState<LineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingCell, setEditingCell] = useState<{ rowId: string; colId: EditableCol } | null>(null);
@@ -873,7 +882,19 @@ export function EstimateTable({ estimateId, projectName, companyName }: { estima
               <div style={{ fontSize: '22px', fontWeight: 700, color: '#C2410C', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
                 {companyName || 'My Company'}
               </div>
-              <div style={{ fontSize: '16px', fontWeight: 600, color: '#1c1917', marginTop: '6px' }}>
+              {(companyAddress || companyPhone || companyEmail) && (
+                <div style={{ fontSize: '11px', color: '#78716c', marginTop: '4px', lineHeight: 1.5 }}>
+                  {companyAddress && <div>{companyAddress}</div>}
+                  {(companyPhone || companyEmail) && (
+                    <div>
+                      {companyPhone}
+                      {companyPhone && companyEmail ? ' · ' : ''}
+                      {companyEmail}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div style={{ fontSize: '16px', fontWeight: 600, color: '#1c1917', marginTop: '12px' }}>
                 {projectName}
               </div>
             </div>

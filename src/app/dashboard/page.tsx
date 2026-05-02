@@ -1,32 +1,14 @@
-import { eq } from 'drizzle-orm';
 import type { Metadata } from 'next';
 
 import { ProjectsPanel } from '@/features/projects/ProjectsPanel';
-import { db } from '@/libs/DB';
-import { createClient } from '@/libs/supabase/server';
-import { users } from '@/models/Schema';
 
-import { CompanyNameField } from './CompanyNameField';
 import { SignOutButton } from './sign-out-button';
 
 export const metadata: Metadata = {
   title: 'Projects | Mana',
 };
 
-export default async function DashboardPage() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  let companyName: string | null = null;
-  if (user) {
-    try {
-      const [row] = await db.select().from(users).where(eq(users.id, user.id));
-      companyName = row?.companyName ?? null;
-    } catch {
-      // users table may not exist yet if migration 0002 hasn't been applied
-    }
-  }
-
+export default function DashboardPage() {
   return (
     <main className="flex min-h-screen flex-col items-center gap-8 px-4 py-12">
       <div className="w-full max-w-2xl">
@@ -37,7 +19,6 @@ export default async function DashboardPage() {
             <p className="mt-0.5 text-xs text-stone-400">Construction Estimating</p>
           </div>
           <div className="flex items-center gap-4">
-            <CompanyNameField initialValue={companyName} />
             <a
               href="/dashboard/settings"
               className="text-sm text-stone-500 transition-colors hover:text-stone-800"

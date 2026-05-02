@@ -8,7 +8,7 @@ import { getOrCreateEstimate } from '@/features/estimates/queries';
 import { GlobalSaveIndicator, SaveStatusProvider } from '@/features/estimates/SaveStatusContext';
 import { db } from '@/libs/DB';
 import { createClient } from '@/libs/supabase/server';
-import { projects, users } from '@/models/Schema';
+import { projects, userProfiles } from '@/models/Schema';
 
 type Props = { params: { projectId: string } };
 
@@ -43,8 +43,8 @@ export default async function ProjectPage({ params }: Props) {
     notFound();
   }
 
-  const [userRow, estimate] = await Promise.all([
-    db.select().from(users).where(eq(users.id, user.id)).then(rows => rows[0] ?? null).catch(() => null),
+  const [profile, estimate] = await Promise.all([
+    db.select().from(userProfiles).where(eq(userProfiles.userId, user.id)).then(rows => rows[0] ?? null).catch(() => null),
     getOrCreateEstimate(project.id, user.id),
   ]);
 
@@ -77,7 +77,10 @@ export default async function ProjectPage({ params }: Props) {
           <EstimateTable
             estimateId={estimate.id}
             projectName={project.name}
-            companyName={userRow?.companyName ?? null}
+            companyName={profile?.companyName ?? null}
+            companyAddress={profile?.companyAddress ?? null}
+            companyPhone={profile?.companyPhone ?? null}
+            companyEmail={profile?.companyEmail ?? null}
           />
           <GlobalSaveIndicator />
         </SaveStatusProvider>
