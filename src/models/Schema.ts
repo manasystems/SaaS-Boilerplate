@@ -13,6 +13,9 @@ export const userProfiles = pgTable('user_profiles', {
   companyAddress: text('company_address'),
   companyPhone: text('company_phone'),
   companyEmail: text('company_email'),
+  logoUrl: text('logo_url'),
+  accentColor: text('accent_color'),
+  licenseNumber: text('license_number'),
   updatedAt: timestamp('updated_at', { mode: 'date' }).defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 

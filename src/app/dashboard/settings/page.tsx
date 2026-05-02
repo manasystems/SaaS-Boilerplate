@@ -4,11 +4,14 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 
+import { LogoUpload } from '@/features/settings/LogoUpload';
+
 type ProfileData = {
   companyName?: string | null;
   companyAddress?: string | null;
   companyPhone?: string | null;
   companyEmail?: string | null;
+  logoUrl?: string | null;
 };
 
 type FieldKey = keyof ProfileData;
@@ -173,6 +176,27 @@ function ShellTab({ message }: { message: string }) {
   );
 }
 
+function AppearanceTab() {
+  const [logoUrl, setLogoUrl] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then((data: ProfileData) => setLogoUrl(data.logoUrl ?? null));
+  }, []);
+
+  if (logoUrl === undefined) {
+    return (
+      <div className="space-y-4 rounded-xl border border-stone-200 bg-white p-6 shadow-sm">
+        <div className="h-4 w-28 animate-pulse rounded bg-stone-100" />
+        <div className="h-10 w-full animate-pulse rounded bg-stone-100" />
+      </div>
+    );
+  }
+
+  return <LogoUpload initialLogoUrl={logoUrl} />;
+}
+
 function SettingsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -214,9 +238,7 @@ function SettingsContent() {
       {activeTab === 'defaults' && (
         <ShellTab message="Default estimate settings coming soon." />
       )}
-      {activeTab === 'appearance' && (
-        <ShellTab message="Appearance settings coming soon." />
-      )}
+      {activeTab === 'appearance' && <AppearanceTab />}
       {activeTab === 'ai' && (
         <div className="rounded-xl border border-stone-200 bg-white p-6 shadow-sm">
           <p className="text-sm text-stone-700">AI features coming in Beta 2.</p>

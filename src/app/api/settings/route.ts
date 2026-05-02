@@ -38,6 +38,9 @@ export async function PATCH(request: NextRequest) {
   if ('companyEmail' in body) {
     patch.companyEmail = typeof body.companyEmail === 'string' ? body.companyEmail.trim() || null : null;
   }
+  if ('logoUrl' in body) {
+    patch.logoUrl = typeof body.logoUrl === 'string' ? body.logoUrl.trim() || null : null;
+  }
 
   const [row] = await db
     .insert(userProfiles)
