@@ -72,17 +72,21 @@ export async function listMarkupRows(estimateId: string) {
     .orderBy(asc(markupRows.sortOrder));
 }
 
-export async function ensureDefaultMarkupRows(estimateId: string) {
+export async function ensureDefaultMarkupRows(
+  estimateId: string,
+  defaults?: { overhead: number; profit: number; contingency: number },
+) {
   const existing = await listMarkupRows(estimateId);
   if (existing.length > 0) {
     return existing;
   }
-  const defaults = [
-    { estimateId, label: 'Overhead', percentage: '10', sortOrder: 0 },
-    { estimateId, label: 'Profit', percentage: '8', sortOrder: 1 },
-    { estimateId, label: 'Contingency', percentage: '5', sortOrder: 2 },
+  const d = defaults ?? { overhead: 10, profit: 8, contingency: 5 };
+  const rows = [
+    { estimateId, label: 'Overhead', percentage: String(d.overhead), sortOrder: 0 },
+    { estimateId, label: 'Profit', percentage: String(d.profit), sortOrder: 1 },
+    { estimateId, label: 'Contingency', percentage: String(d.contingency), sortOrder: 2 },
   ];
-  return db.insert(markupRows).values(defaults).returning();
+  return db.insert(markupRows).values(rows).returning();
 }
 
 export async function updateMarkupRow(id: string, userId: string, patch: { percentage?: string }) {

@@ -12,6 +12,9 @@ type ProfileData = {
   companyPhone?: string | null;
   companyEmail?: string | null;
   logoUrl?: string | null;
+  defaultOverhead?: string | null;
+  defaultProfit?: string | null;
+  defaultContingency?: string | null;
 };
 
 type FieldKey = keyof ProfileData;
@@ -168,6 +171,158 @@ function CompanyTab() {
   );
 }
 
+function DefaultsTab() {
+  const [overhead, setOverhead] = useState('10');
+  const [profit, setProfit] = useState('8');
+  const [contingency, setContingency] = useState('5');
+  const [loading, setLoading] = useState(true);
+  const [saved, setSaved] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then((data: ProfileData) => {
+        setOverhead(data.defaultOverhead ?? '10');
+        setProfit(data.defaultProfit ?? '8');
+        setContingency(data.defaultContingency ?? '5');
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const oh = Number.parseFloat(overhead) || 0;
+  const pr = Number.parseFloat(profit) || 0;
+  const co = Number.parseFloat(contingency) || 0;
+  const subtotal = 10000;
+  const afterOverhead = subtotal * (1 + oh / 100);
+  const afterProfit = afterOverhead * (1 + pr / 100);
+  const afterContingency = afterProfit * (1 + co / 100);
+
+  const fmt = (n: number) =>
+    n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+  async function handleSave() {
+    await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        defaultOverhead: overhead,
+        defaultProfit: profit,
+        defaultContingency: contingency,
+      }),
+    });
+    if (savedTimer.current) {
+      clearTimeout(savedTimer.current);
+    }
+    setSaved(true);
+    savedTimer.current = setTimeout(() => setSaved(false), 3000);
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          // eslint-disable-next-line react/no-array-index-key
+          <div key={i} className="flex flex-col gap-1">
+            <div className="h-4 w-28 animate-pulse rounded bg-stone-100" />
+            <div className="h-10 w-full animate-pulse rounded bg-stone-100" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border border-stone-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-4 text-sm font-semibold text-stone-700">Default Markup Rates</h3>
+        <div className="space-y-4">
+          {[
+            { label: 'Overhead %', value: overhead, set: setOverhead },
+            { label: 'Profit %', value: profit, set: setProfit },
+            { label: 'Contingency %', value: contingency, set: setContingency },
+          ].map(({ label, value, set }) => (
+            <div key={label} className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-stone-700">{label}</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={value}
+                onChange={e => set(e.target.value)}
+                className="w-40 rounded border border-stone-200 px-3 py-2 text-sm text-stone-800 focus:border-stone-400 focus:outline-none focus:ring-1 focus:ring-stone-300"
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-5 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleSave}
+            className="rounded px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            style={{ backgroundColor: 'var(--brand-orange)' }}
+          >
+            Save Defaults
+          </button>
+          {saved && (
+            <span className="text-xs font-medium text-green-600">Saved ✓</span>
+          )}
+        </div>
+        <p className="mt-3 text-xs text-stone-400">
+          Applied automatically to new estimates.
+        </p>
+      </div>
+
+      {/* Live preview */}
+      <div className="rounded-xl border border-stone-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-4 text-sm font-semibold text-stone-700">
+          Live Preview — $10,000 Subtotal
+        </h3>
+        <table className="w-full text-sm">
+          <tbody>
+            <tr className="border-b border-stone-100">
+              <td className="py-2 text-stone-600">Subtotal</td>
+              <td className="py-2 text-right font-mono text-stone-800">{fmt(subtotal)}</td>
+            </tr>
+            <tr className="border-b border-stone-100">
+              <td className="py-2 text-stone-600">
+                + Overhead (
+                {oh}
+                %)
+              </td>
+              <td className="py-2 text-right font-mono text-stone-800">{fmt(afterOverhead)}</td>
+            </tr>
+            <tr className="border-b border-stone-100">
+              <td className="py-2 text-stone-600">
+                + Profit (
+                {pr}
+                %)
+              </td>
+              <td className="py-2 text-right font-mono text-stone-800">{fmt(afterProfit)}</td>
+            </tr>
+            <tr className="border-b border-stone-100">
+              <td className="py-2 text-stone-600">
+                + Contingency (
+                {co}
+                %)
+              </td>
+              <td className="py-2 text-right font-mono text-stone-800">{fmt(afterContingency)}</td>
+            </tr>
+            <tr>
+              <td className="py-2 font-semibold text-stone-800">Grand Total</td>
+              <td className="py-2 text-right font-mono font-semibold text-stone-800">
+                {fmt(afterContingency)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function ShellTab({ message }: { message: string }) {
   return (
     <div className="rounded-xl border border-stone-200 bg-white p-6 shadow-sm">
@@ -235,9 +390,7 @@ function SettingsContent() {
         <ShellTab message="Profile settings coming soon." />
       )}
       {activeTab === 'company' && <CompanyTab />}
-      {activeTab === 'defaults' && (
-        <ShellTab message="Default estimate settings coming soon." />
-      )}
+      {activeTab === 'defaults' && <DefaultsTab />}
       {activeTab === 'appearance' && <AppearanceTab />}
       {activeTab === 'ai' && (
         <div className="rounded-xl border border-stone-200 bg-white p-6 shadow-sm">

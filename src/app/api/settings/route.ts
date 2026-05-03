@@ -41,6 +41,24 @@ export async function PATCH(request: NextRequest) {
   if ('logoUrl' in body) {
     patch.logoUrl = typeof body.logoUrl === 'string' ? body.logoUrl.trim() || null : null;
   }
+  if ('defaultOverhead' in body) {
+    const v = Number.parseFloat(body.defaultOverhead);
+    if (!Number.isNaN(v) && v >= 0 && v <= 100) {
+      patch.defaultOverhead = String(v);
+    }
+  }
+  if ('defaultProfit' in body) {
+    const v = Number.parseFloat(body.defaultProfit);
+    if (!Number.isNaN(v) && v >= 0 && v <= 100) {
+      patch.defaultProfit = String(v);
+    }
+  }
+  if ('defaultContingency' in body) {
+    const v = Number.parseFloat(body.defaultContingency);
+    if (!Number.isNaN(v) && v >= 0 && v <= 100) {
+      patch.defaultContingency = String(v);
+    }
+  }
 
   const [row] = await db
     .insert(userProfiles)

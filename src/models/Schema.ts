@@ -16,6 +16,9 @@ export const userProfiles = pgTable('user_profiles', {
   logoUrl: text('logo_url'),
   accentColor: text('accent_color'),
   licenseNumber: text('license_number'),
+  defaultOverhead: numeric('default_overhead', { precision: 6, scale: 3 }).notNull().default('10'),
+  defaultProfit: numeric('default_profit', { precision: 6, scale: 3 }).notNull().default('8'),
+  defaultContingency: numeric('default_contingency', { precision: 6, scale: 3 }).notNull().default('5'),
   updatedAt: timestamp('updated_at', { mode: 'date' }).defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 

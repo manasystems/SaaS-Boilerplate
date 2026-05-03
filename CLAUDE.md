@@ -172,7 +172,13 @@ Budget ceiling: **$400 for Beta 1**. Current spend: $10.44 (domain only).
 - Dashboard header renders uploaded logo
 - `SUPABASE_SERVICE_ROLE_KEY` added to Vercel
 
-### Beta 1.1 Day 3 — Next
+### Beta 1.1 Day 3 (2026-05-02) — Default Markups ✅
+- **Migration 0006** (`0006_default_markups.sql`): added `default_overhead`, `default_profit`, `default_contingency` columns (NUMERIC 6,3) to `user_profiles` with defaults 10/8/5
+- **Schema.ts**: added three new columns to `userProfiles` Drizzle table definition (alongside Day 2's logo/accent/license columns)
+- **Settings API** (`/api/settings`): PATCH handler now accepts and validates `defaultOverhead`, `defaultProfit`, `defaultContingency` (0–100 range)
+- **Defaults tab** (`/dashboard/settings?tab=defaults`): three numeric inputs, Save Defaults button with "Saved ✓" confirmation, live preview panel showing $10,000 example subtotal broken down through all three markups in real time
+- **`ensureDefaultMarkupRows()`**: updated signature to accept optional `defaults` param; falls back to 10/8/5 if not provided
+- **Markup-rows GET route**: fetches user's saved defaults from `user_profiles` and passes them to `ensureDefaultMarkupRows` — new estimates seed with the user's configured rates
 
 ---
 
