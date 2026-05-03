@@ -19,9 +19,10 @@ Beachhead market: small-to-mid civil contractors (sitework subs, paving contract
 |---|---|
 | Frontend | Next.js + TypeScript + Tailwind CSS + shadcn/ui |
 | Auth | Supabase Auth (email/password, JWTs, protected routes) |
+| Storage | Supabase Storage (`workspace-assets` bucket — logo uploads) |
 | Database | Neon Postgres + Drizzle ORM |
-| Table grid | TanStack Table v8 (Days 6–7) |
-| PDF export | html2canvas + jsPDF (Day 9) |
+| Table grid | TanStack Table v8 |
+| PDF export | html2canvas + jsPDF |
 | Email | Resend |
 | Hosting | Vercel Hobby (GitHub auto-deploy on push to `main`) |
 | AI (future) | Claude Sonnet via omnibar — Beta 2+ only |
@@ -29,32 +30,28 @@ Beachhead market: small-to-mid civil contractors (sitework subs, paving contract
 
 ---
 
-## What's Built (Days 1–11 complete)
+## What's Built (Beta 1 + Beta 1.1 Days 1–3)
 
+### Beta 1 (complete)
 - **Auth**: email/password signup/login, protected routes via Supabase
-- **Database**: Neon Postgres wired, Drizzle schema + migrations applied
 - **Project CRUD**: list, create, rename, delete — all with `user_id` isolation
 - **Isolation tests**: 4 tests proving cross-user data access returns zero rows (12/12 passing)
-- **Deployed**: Vercel with GitHub auto-deploy on push to `main`
-- **Estimate table** (Day 6): TanStack Table v8, inline editing, Excel-style keyboard nav (Tab/Shift+Tab/Enter/↑↓/Esc), 500ms debounced autosave, add row, delete row on hover
+- **Estimate table**: TanStack Table v8, inline editing, Excel-style keyboard nav (Tab/Shift+Tab/Enter/↑↓/Esc), 500ms debounced autosave, add row, delete row on hover
 - **Drag-to-reorder** line items via dnd-kit
-- **Markup rows**: overhead/fee/contingency % with auto-recalc, grand total
+- **Markup rows**: Overhead/Profit/Contingency % with auto-recalc, grand total
 - **PDF export**: html2canvas + jsPDF, clean printable bid with company name + project name
-- **API routes**: `/api/estimates`, `/api/estimates/[id]/line-items`, `/api/estimates/[id]/markup-rows`, `/api/line-items/[id]`, `/api/markup-rows/[id]`, `/api/projects`, `/api/projects/[id]`, `/api/user-settings`
-- **Schema**: `users`, `projects`, `estimates`, `line_items`, `markup_rows` — migrations 0000–0002 applied
-- **Polish (Day 10)**:
-  - Empty state for projects list (icon + CTA button)
-  - Animated skeleton cards while projects load
-  - Global save indicator (fixed bottom-right: Saving/Saved/Error)
-  - Company name per user — editable in dashboard header, shown in PDF export
-  - Dashboard tab title "Projects | Mana", project page "[Name] | Mana"
-  - Mana wordmark in header (burnt orange), Construction Estimating tagline
-  - Breadcrumb ← Projects on estimate page
-- **Legal + Feedback (Day 11)**:
-  - `/terms` and `/privacy` static pages — SaaS-appropriate boilerplate
-  - Dashboard footer linking to both pages on all dashboard routes
-  - Floating "Feedback" button (bottom-left) — modal with textarea, posts to `/api/feedback`
-  - `feedback` table in Neon (migration 0003 applied) — stores userId, message, created_at
+- **Polish**: Empty state, skeleton loaders, global save indicator, breadcrumb nav, tab titles
+- **Legal**: `/legal/terms` and `/legal/privacy` static pages; dashboard footer links both
+- **Feedback**: Floating button (bottom-left) → mailto link
+
+### Beta 1.1 (complete through Day 3)
+- **Rebrand**: "Mana Build" wordmark (Archivo Black), brand tokens in Tailwind, `--brand-orange` CSS var
+- **Settings page** (`/dashboard/settings`): 5-tab layout — Profile / Company / Defaults / Appearance / AI
+  - **Company tab**: editable company name, address, phone, email — saves on blur via `/api/settings`
+  - **Appearance tab**: logo upload (Supabase Storage), live preview, remove button
+  - **Defaults tab**: user-configurable Overhead %, Profit %, Contingency % with live $10k preview panel
+- **Logo upload**: file picker + preview in Appearance tab; logo stored at `{userId}/company-logo.{ext}` in `workspace-assets` bucket; dashboard header renders uploaded logo
+- **Default markups**: saved per-user in `user_profiles`; new estimates seed markup rows from the user's saved defaults (falls back to 10/8/5)
 
 ---
 
@@ -70,9 +67,9 @@ src/
     estimates/
       EstimateTable.tsx            # Main estimate grid (TanStack Table v8 + dnd-kit)
       SaveStatusContext.tsx        # Save status context + GlobalSaveIndicator
-      queries.ts                   # Estimate + line item CRUD queries
-    feedback/
-      FeedbackButton.tsx           # Floating feedback button + modal (client)
+      queries.ts                   # Estimate + line item CRUD queries; ensureDefaultMarkupRows()
+    settings/
+      LogoUpload.tsx               # Logo file picker, preview, remove (client component)
   app/
     api/
       projects/
@@ -81,13 +78,15 @@ src/
       estimates/
         route.ts                   # GET + POST
         [id]/line-items/route.ts   # GET + POST line items
-        [id]/markup-rows/route.ts  # GET + POST markup rows
+        [id]/markup-rows/route.ts  # GET + POST markup rows; fetches user defaults before seeding
       line-items/
         [id]/route.ts              # PATCH + DELETE
       markup-rows/
         [id]/route.ts              # PATCH + DELETE
-      user-settings/
-        route.ts                   # GET + PATCH company name
+      settings/
+        route.ts                   # GET + PATCH user_profiles (company info + logo + markup defaults)
+      upload-logo/
+        route.ts                   # POST — upload logo to Supabase Storage; returns public URL
       feedback/
         route.ts                   # POST — save feedback to DB
     dashboard/
@@ -95,12 +94,13 @@ src/
       page.tsx                     # Projects list + company name field
       CompanyNameField.tsx         # Inline editable company name (client)
       sign-out-button.tsx          # Sign out
+      settings/
+        page.tsx                   # Settings page — 5-tab UI (Company, Defaults, Appearance, …)
       projects/[projectId]/
         page.tsx                   # Estimate view (server, fetches project + user)
-    terms/
-      page.tsx                     # Terms of Service (public, static)
-    privacy/
-      page.tsx                     # Privacy Policy (public, static)
+    legal/
+      terms/page.tsx               # Terms of Service (public, static)
+      privacy/page.tsx             # Privacy Policy (public, static)
   libs/
     DB.ts                          # Database connection (node-postgres / pg)
     Env.ts                         # Env var validation (t3-env)
@@ -110,10 +110,26 @@ src/
 
 ## Database Schema (Drizzle)
 
-Tables: `users`, `projects`, `estimates`, `line_items`, `markup_rows`, `feedback`
+Tables: `users`, `user_profiles`, `projects`, `estimates`, `line_items`, `markup_rows`, `feedback`
 
-- `users.id` = Supabase auth user UUID; stores `company_name`
-- Vertical-specific fields go in a **JSONB `metadata` column** — no vertical logic in core schema columns.
+Migrations applied to Neon production: **0000–0006**
+
+| Migration | What it added |
+|---|---|
+| 0000 | `users`, `projects`, `estimates`, `line_items`, `markup_rows` |
+| 0001 | `userId` + timestamps on `estimates` |
+| 0002 | `company_name` on `users` |
+| 0003 | `feedback` table |
+| 0004 | `user_profiles` table (id, user_id, company_name, address, phone, email, updated_at) |
+| 0005 | `logo_url`, `accent_color`, `license_number` on `user_profiles` |
+| 0006 | `default_overhead`, `default_profit`, `default_contingency` (NUMERIC 6,3) on `user_profiles` |
+
+**`user_profiles` full column set** (as of migration 0006):
+`id`, `user_id` (unique FK to Supabase auth UUID), `company_name`, `company_address`, `company_phone`, `company_email`, `logo_url`, `accent_color`, `license_number`, `default_overhead` (default 10), `default_profit` (default 8), `default_contingency` (default 5), `updated_at`
+
+- `users.id` = Supabase auth user UUID
+- `user_profiles` is the single source of truth for all per-user settings — upserted via `/api/settings`
+- Vertical-specific fields go in a **JSONB `metadata` column** — no vertical logic in core schema columns
 
 ---
 
@@ -124,31 +140,33 @@ Tables: `users`, `projects`, `estimates`, `line_items`, `markup_rows`, `feedback
 3. **PDF generation is client-side only** — html2canvas + jsPDF. No server-side Puppeteer, ever.
 4. **Debounce all DB writes on keystroke input** — 500ms debounce minimum.
 5. **Vertical-specific fields live in JSONB `metadata` only** — never add vertical-specific columns to core schema tables.
+6. **Settings always go through `/api/settings`** — never write to `user_profiles` from any other route except the upsert in `/api/settings/route.ts`.
 
 ---
 
 ## Commands
 
 ```bash
-npm run dev               # local dev server
-npm run build             # production build
-npm test                  # run all tests
-npx drizzle-kit migrate   # run migrations
-vercel deploy --token=<token>   # deploy to Vercel
+npm run dev                      # local dev server
+npm run build                    # production build
+npm test                         # run all tests
+SKIP_ENV_VALIDATION=1 npx tsc --noEmit   # type-check without needing env vars
+npx drizzle-kit generate         # generate migration from schema diff
+npx drizzle-kit migrate          # apply pending migrations to Neon
 ```
 
 ---
 
 ## Design Language
 
-- **Palette**: Stone/warm-neutral, accent `#C2410C` (burnt orange)
-- **Fonts**: Inter (UI) + JetBrains Mono (numbers/grid)
+- **Palette**: Stone/warm-neutral, accent `#C2410C` (burnt orange) — CSS var `--brand-orange`
+- **Fonts**: Inter (UI) + JetBrains Mono (numbers/grid) + Archivo Black (wordmark only)
 - **Grid**: Dense spreadsheet table, 32px rows
 - **UX principle**: Keyboard-first, Excel-like shortcuts. "Don't make them read a manual."
 
 ---
 
-## Beta 1 Scope (locked — do not add features outside this list)
+## Beta 1 Scope (locked — complete)
 
 1. Deployed web app at real URL ✅
 2. Email/password auth with data isolation ✅
@@ -163,22 +181,27 @@ Budget ceiling: **$400 for Beta 1**. Current spend: $10.44 (domain only).
 
 ## Build History — Beta 1.1
 
+### Beta 1.1 Day 1 (2026-04-30) — Rebrand + Settings Scaffold ✅
+- Mana Build rebrand: Archivo Black wordmark, `--brand-orange` CSS var wired into Tailwind
+- Settings page scaffold at `/dashboard/settings` with 5-tab layout: Profile / Company / Defaults / Appearance / AI
+- Company tab fully wired to `/api/settings` (GET + PATCH `user_profiles`)
+- `src/app/api/settings/route.ts` created — upserts `user_profiles` row on PATCH
+
 ### Beta 1.1 Day 2 (2026-05-02) — Logo Upload ✅
-- Supabase Storage bucket `workspace-assets` (private, per-user logo path)
-- Migration 0005: `logo_url`, `accent_color`, `license_number` columns on `user_profiles` — applied to Neon production
+- Supabase Storage bucket `workspace-assets` (private, per-user path: `{userId}/company-logo.{ext}`)
+- Migration 0005: `logo_url`, `accent_color`, `license_number` columns added to `user_profiles`
 - `src/app/api/upload-logo/route.ts` — upload API with MIME/size validation
 - `src/features/settings/LogoUpload.tsx` — file picker, preview, remove
-- Settings → Appearance tab added
-- Dashboard header renders uploaded logo
-- `SUPABASE_SERVICE_ROLE_KEY` added to Vercel
+- Settings → Appearance tab live
+- Dashboard header renders uploaded logo when set
+- `SUPABASE_SERVICE_ROLE_KEY` added to Vercel environment
 
 ### Beta 1.1 Day 3 (2026-05-02) — Default Markups ✅
-- **Migration 0006** (`0006_default_markups.sql`): added `default_overhead`, `default_profit`, `default_contingency` columns (NUMERIC 6,3) to `user_profiles` with defaults 10/8/5
-- **Schema.ts**: added three new columns to `userProfiles` Drizzle table definition (alongside Day 2's logo/accent/license columns)
-- **Settings API** (`/api/settings`): PATCH handler now accepts and validates `defaultOverhead`, `defaultProfit`, `defaultContingency` (0–100 range)
-- **Defaults tab** (`/dashboard/settings?tab=defaults`): three numeric inputs, Save Defaults button with "Saved ✓" confirmation, live preview panel showing $10,000 example subtotal broken down through all three markups in real time
-- **`ensureDefaultMarkupRows()`**: updated signature to accept optional `defaults` param; falls back to 10/8/5 if not provided
-- **Markup-rows GET route**: fetches user's saved defaults from `user_profiles` and passes them to `ensureDefaultMarkupRows` — new estimates seed with the user's configured rates
+- Migration 0006: `default_overhead`, `default_profit`, `default_contingency` (NUMERIC 6,3, defaults 10/8/5) added to `user_profiles`
+- Settings → Defaults tab live: three numeric inputs, Save Defaults button with "Saved ✓" flash, live $10k preview panel (updates in real time as you type)
+- `/api/settings` PATCH now validates and saves the three markup defaults
+- `ensureDefaultMarkupRows()` updated to accept optional `defaults` param — falls back to 10/8/5
+- Markup-rows GET route fetches user's saved defaults from `user_profiles` before seeding — new estimates open with the user's configured rates
 
 ---
 
@@ -193,3 +216,5 @@ Budget ceiling: **$400 for Beta 1**. Current spend: $10.44 (domain only).
 - Stripe billing
 - Sentry source maps (`SENTRY_AUTH_TOKEN` not set — non-blocking, skip it)
 - Redis / Upstash caching
+- Profile tab in Settings (currently shell placeholder)
+- `accent_color` and `license_number` fields collected in DB but not yet surfaced in UI
