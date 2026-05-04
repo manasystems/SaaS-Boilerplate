@@ -171,29 +171,36 @@ function CompanyTab() {
   );
 }
 
+type DefaultsFieldKey = 'defaultOverhead' | 'defaultProfit' | 'defaultContingency';
+
 function DefaultsTab() {
-  const [overhead, setOverhead] = useState('10');
-  const [profit, setProfit] = useState('8');
-  const [contingency, setContingency] = useState('5');
+  const [form, setForm] = useState<Record<DefaultsFieldKey, string>>({
+    defaultOverhead: '10',
+    defaultProfit: '8',
+    defaultContingency: '5',
+  });
   const [loading, setLoading] = useState(true);
-  const [saved, setSaved] = useState(false);
+  const [savedField, setSavedField] = useState<DefaultsFieldKey | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch('/api/settings')
       .then(r => r.json())
       .then((data: ProfileData) => {
-        setOverhead(data.defaultOverhead ?? '10');
-        setProfit(data.defaultProfit ?? '8');
-        setContingency(data.defaultContingency ?? '5');
+        setForm({
+          defaultOverhead: data.defaultOverhead ?? '10',
+          defaultProfit: data.defaultProfit ?? '8',
+          defaultContingency: data.defaultContingency ?? '5',
+        });
       })
       .finally(() => setLoading(false));
   }, []);
 
-  const oh = Number.parseFloat(overhead) || 0;
-  const pr = Number.parseFloat(profit) || 0;
-  const co = Number.parseFloat(contingency) || 0;
-  const subtotal = 10000;
+  const oh = Number.parseFloat(form.defaultOverhead) || 0;
+  const pr = Number.parseFloat(form.defaultProfit) || 0;
+  const co = Number.parseFloat(form.defaultContingency) || 0;
+  const subtotal = 100000;
   const afterOverhead = subtotal * (1 + oh / 100);
   const afterProfit = afterOverhead * (1 + pr / 100);
   const afterContingency = afterProfit * (1 + co / 100);
@@ -201,21 +208,29 @@ function DefaultsTab() {
   const fmt = (n: number) =>
     n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
-  async function handleSave() {
-    await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        defaultOverhead: overhead,
-        defaultProfit: profit,
-        defaultContingency: contingency,
-      }),
-    });
-    if (savedTimer.current) {
-      clearTimeout(savedTimer.current);
+  function handleChange(key: DefaultsFieldKey, val: string) {
+    setForm(prev => ({ ...prev, [key]: val }));
+    if (savedField === key) {
+      setSavedField(null);
     }
-    setSaved(true);
-    savedTimer.current = setTimeout(() => setSaved(false), 3000);
+  }
+
+  async function handleBlur(key: DefaultsFieldKey) {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+    debounceTimer.current = setTimeout(async () => {
+      await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: form[key] }),
+      });
+      if (savedTimer.current) {
+        clearTimeout(savedTimer.current);
+      }
+      setSavedField(key);
+      savedTimer.current = setTimeout(() => setSavedField(null), 3000);
+    }, 500);
   }
 
   if (loading) {
@@ -232,53 +247,48 @@ function DefaultsTab() {
     );
   }
 
+  const fields: { key: DefaultsFieldKey; label: string }[] = [
+    { key: 'defaultOverhead', label: 'Overhead %' },
+    { key: 'defaultProfit', label: 'Profit %' },
+    { key: 'defaultContingency', label: 'Contingency %' },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-stone-200 bg-white p-6 shadow-sm">
         <h3 className="mb-4 text-sm font-semibold text-stone-700">Default Markup Rates</h3>
         <div className="space-y-4">
-          {[
-            { label: 'Overhead %', value: overhead, set: setOverhead },
-            { label: 'Profit %', value: profit, set: setProfit },
-            { label: 'Contingency %', value: contingency, set: setContingency },
-          ].map(({ label, value, set }) => (
-            <div key={label} className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-stone-700">{label}</label>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={0.5}
-                value={value}
-                onChange={e => set(e.target.value)}
-                className="w-40 rounded border border-stone-200 px-3 py-2 text-sm text-stone-800 focus:border-stone-400 focus:outline-none focus:ring-1 focus:ring-stone-300"
-              />
+          {fields.map(({ key, label }) => (
+            <div key={key} className="flex flex-col gap-1">
+              <label htmlFor={key} className="text-sm font-medium text-stone-700">{label}</label>
+              <div className="flex items-center gap-2">
+                <input
+                  id={key}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={form[key]}
+                  onChange={e => handleChange(key, e.target.value)}
+                  onBlur={() => handleBlur(key)}
+                  className="w-40 rounded border border-stone-200 px-3 py-2 text-sm text-stone-800 focus:border-stone-400 focus:outline-none focus:ring-1 focus:ring-stone-300"
+                />
+                {savedField === key && (
+                  <span className="text-xs font-medium text-green-600">Saved</span>
+                )}
+              </div>
             </div>
           ))}
         </div>
-
-        <div className="mt-5 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleSave}
-            className="rounded px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-            style={{ backgroundColor: 'var(--brand-orange)' }}
-          >
-            Save Defaults
-          </button>
-          {saved && (
-            <span className="text-xs font-medium text-green-600">Saved ✓</span>
-          )}
-        </div>
-        <p className="mt-3 text-xs text-stone-400">
-          Applied automatically to new estimates.
+        <p className="mt-4 text-xs text-stone-400">
+          Changes save automatically when you click out of a field. Applied to new estimates.
         </p>
       </div>
 
       {/* Live preview */}
       <div className="rounded-xl border border-stone-200 bg-white p-6 shadow-sm">
         <h3 className="mb-4 text-sm font-semibold text-stone-700">
-          Live Preview — $10,000 Subtotal
+          Live Preview — $100,000 Subtotal
         </h3>
         <table className="w-full text-sm">
           <tbody>

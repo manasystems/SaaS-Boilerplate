@@ -49,7 +49,7 @@ Beachhead market: small-to-mid civil contractors (sitework subs, paving contract
 - **Settings page** (`/dashboard/settings`): 5-tab layout — Profile / Company / Defaults / Appearance / AI
   - **Company tab**: editable company name, address, phone, email — saves on blur via `/api/settings`
   - **Appearance tab**: logo upload (Supabase Storage), live preview, remove button
-  - **Defaults tab**: user-configurable Overhead %, Profit %, Contingency % with live $10k preview panel
+  - **Defaults tab**: user-configurable Overhead %, Profit %, Contingency % with autosave on blur and live $100k preview panel
 - **Logo upload**: file picker + preview in Appearance tab; logo stored at `{userId}/company-logo.{ext}` in `workspace-assets` bucket; dashboard header renders uploaded logo
 - **Default markups**: saved per-user in `user_profiles`; new estimates seed markup rows from the user's saved defaults (falls back to 10/8/5)
 
@@ -198,7 +198,7 @@ Budget ceiling: **$400 for Beta 1**. Current spend: $10.44 (domain only).
 
 ### Beta 1.1 Day 3 (2026-05-02) — Default Markups ✅
 - Migration 0006: `default_overhead`, `default_profit`, `default_contingency` (NUMERIC 6,3, defaults 10/8/5) added to `user_profiles`
-- Settings → Defaults tab live: three numeric inputs, Save Defaults button with "Saved ✓" flash, live $10k preview panel (updates in real time as you type)
+- Settings → Defaults tab live: three numeric inputs, autosave on blur (500ms debounce) with per-field "Saved" indicator, live $100k preview panel (updates in real time as you type)
 - `/api/settings` PATCH now validates and saves the three markup defaults
 - `ensureDefaultMarkupRows()` updated to accept optional `defaults` param — falls back to 10/8/5
 - Markup-rows GET route fetches user's saved defaults from `user_profiles` before seeding — new estimates open with the user's configured rates
